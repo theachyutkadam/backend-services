@@ -5,9 +5,13 @@ class UsersController < ApplicationController
     @user = User.authenticate params[:user][:email], params[:user][:password]
     if @user
       session[:user_id] = @user.id
-      render json: {message: 'User successfully sign in.', status: 200}
+      user_details = {email: @user.email, user_id: @user.id}
+      response.headers["X-AUTH-TOKEN"] = encrypt(user_details.to_json, "user")
+      response = {message: 'User successfully sign in.'}
+      render json: response, status: 200
     else
-      render json: {message: 'Invalid username and password.', status: 401}
+      response = {message: 'Invalid username and password.'}
+      render json: response, status: 401
     end
   end
 
@@ -15,5 +19,17 @@ class UsersController < ApplicationController
     puts "------------------sign_up"
     puts params
     puts "------------------"
+  end
+
+  def sign_out
+    session[:user_id] = nil
+    response = {message: 'User successfully sign out.'}
+    render json: response, status: 200
+  end
+
+  def encrypt(str, key)
+    cipher = OpenSSL::Cipher.new('RC4')
+    cipher.key = OpenSSL::Digest.digest('md5', key)
+    Base64.encode64(cipher.update(str) + cipher.final)
   end
 end
