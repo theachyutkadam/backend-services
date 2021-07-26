@@ -4,9 +4,12 @@ class UsersController < ApplicationController
   def sign_in
     @user = User.authenticate params[:user][:email], params[:user][:password]
     if @user
-      session[:user_id] = @user.id
-      user_details = {email: @user.email, user_id: @user.id}
-      response.headers["X-AUTH-TOKEN"] = encrypt(user_details.to_json, "user")
+      encrypt_token = @user.generate_token
+
+      response.headers["X-AUTH-TOKEN"] = encrypt_token
+      redis_token = Redis.new()
+      redis_token.set(@user.id, encrypt_token)
+
       response = {message: 'User successfully sign in.'}
       render json: response, status: 200
     else
@@ -18,18 +21,22 @@ class UsersController < ApplicationController
   def sign_up
     puts "------------------sign_up"
     puts params
-    puts "------------------"
   end
 
   def sign_out
-    session[:user_id] = nil
+    auth_token = request.headers['X-AUTH-TOKEN']
+    user_details = JSON.parse(decrypt(auth_token, 'user'))
+    @user = User.find_by(email: user_details['email'])
+
+    Redis.new.del("#{@user.id}")
     response = {message: 'User successfully sign out.'}
     render json: response, status: 200
   end
 
-  def encrypt(str, key)
-    cipher = OpenSSL::Cipher.new('RC4')
-    cipher.key = OpenSSL::Digest.digest('md5', key)
-    Base64.encode64(cipher.update(str) + cipher.final)
+  def decrypt(encrypted_string, key)
+    decipher = OpenSSL::Cipher.new('RC4')
+    decipher.key = OpenSSL::Digest.digest('md5', key)
+    decipher.update(Base64.decode64(encrypted_string)) + decipher.final
   end
+
 end

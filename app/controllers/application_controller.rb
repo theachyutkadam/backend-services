@@ -3,17 +3,30 @@ class ApplicationController < ActionController::API
 
   def authenticate_user
     auth_token = request.headers['X-AUTH-TOKEN']
-    user_details = JSON.parse(decrypt(auth_token, 'user'))
-    @user = User.find_by(email: user_details['email'])
-    if @user.id == session[:user_id]
-    else
-      if session[:user_id].present?
-        response = {message: "Access denied"}
+    begin
+      user_details = JSON.parse(decrypt(auth_token, 'user'))
+      @user = User.find_by(email: user_details['email'])
+    rescue Exception => e
+      Rails.logger.info "Authentication error --> Message: #{e.message}"
+      # return_error 500, false, 'Oops. Something went wrong, please try again after some time.', []
+      response = {message: "Oops. Something went wrong, please try again after some time."}
+      render json: response, status: 500
+    end
+
+    if @user
+      if Redis.new.keys("#{@user.id}").empty?
+        response = {message: "User sign out already"}
         render json: response, status: 401
       else
-        response = {message: "User not found"}
-        render json: response, status: 401
+        if auth_token == Redis.new.get("#{@user.id}").chomp
+        else
+          response = {message: "Access denied"}
+          render json: response, status: 401
+        end
       end
+    else
+      response = {message: "User not found"}
+      render json: response, status: 401
     end
   end
 
